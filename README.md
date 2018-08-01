@@ -3,8 +3,11 @@
 Implementation of Kinesis Source Provider in Spark Structured Streaming. [SPARK-18165](https://issues.apache.org/jira/browse/SPARK-18165) describes the need for such implementation. 
 
 ## Developer Setup
+Checkout kinesis-sql branch depending upon your Spark version. Use Master branch for the latest Spark version 
 
+###### Spark version 2.2.0
 	git clone git@github.com:qubole/kinesis-sql.git
+	git checkout 2.2.0
 	cd kinesis-sql
 	mvn install -DskipTests
 
@@ -83,6 +86,22 @@ Refering $SPARK_HOME to the Spark installation directory. This library has been 
 	|   Connector|    1|
 	+------------+-----+ 
 
+###### Using the Kinesis Sink
+    // Cast data into string and group by data column
+        scala> :paste
+        kinesis
+        .selectExpr("CAST(rand() AS STRING) as partitionKey","CAST(data AS STRING)").as[(String,String)]
+        .groupBy("data").count()
+  	    .writeStream
+  	    .format("kinesis")
+        .outputMode("update") 
+        .option("streamName", "spark-sink-example")
+        .option("endpointUrl", "https://kinesis.us-east-1.amazonaws.com")
+        .option("awsAccessKeyId", [ACCESS_KEY])
+        .option("awsSecretKey", [SECRET_KEY])
+  	    .start()
+  	    .awaitTermination()
+
 ## Kinesis Source Configuration 
 
  Option-Name        | Default-Value           | Description  |
@@ -99,10 +118,19 @@ Refering $SPARK_HOME to the Spark installation directory. This library has been 
 | kinesis.client.numRetries |     3 |  Maximum Number of retries for Kinesis API requests  |
 | kinesis.client.retryIntervalMs |     1000 |  Cool-off period before retrying Kinesis API  |
 
+## Kinesis Sink Configuration
+ Option-Name        | Default-Value           | Description  |
+| ------------- |:-------------:| -----:|
+| streamName   | - | Name of the stream in Kinesis to write to|
+| endpointUrl  | https://kinesis.us-east-1.amazonaws.com |  The aws endpoint of the kinesis Stream |
+| awsAccessKeyId |    -     |    AWS Credentials for  Kinesis describe, read record operations    
+| awsSecretKey |      -  |    AWS Credentials for  Kinesis describe, read record |
+| kinesis.executor.recordMaxBufferedTime | 1000 (millis) | Specify the maximum buffered time of a record |
+| kinesis.executor.maxConnections | 1 | Specify the maximum connections to Kinesis | 
+| kinesis.executor.aggregationEnabled | true | Specify if records should be aggregated before sending them to Kinesis | 
+
 ## Roadmap
 *  Above library has been developed and tested against Spark 2.2.x.  We need to migrate to DataSource V2 APIs released in Spark 2.3.0
-*  Support for Kinesis Sink 
-
 
 ## Acknowledgement
 
