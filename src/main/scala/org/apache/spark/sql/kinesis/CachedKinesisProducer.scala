@@ -85,6 +85,8 @@ private[kinesis] object CachedKinesisProducer extends Logging {
     val awsSecretKey = producerConfiguration.getOrElse(
       KinesisSourceProvider.AWS_SECRET_KEY, "").toString
 
+    val awsSessionKey = producerConfiguration.get(KinesisSourceProvider.AWS_SESSION_TOKEN)
+
     val awsStsRoleArn = producerConfiguration.getOrElse(
       KinesisSourceProvider.AWS_STS_ROLE_ARN, "").toString
 
@@ -103,7 +105,7 @@ private[kinesis] object CachedKinesisProducer extends Logging {
     val region = getRegionNameByEndpoint(endpoint)
 
     val kinesisCredsProvider = if (awsAccessKeyId.length > 0) {
-      BasicCredentials(awsAccessKeyId, awsSecretKey)
+      BasicCredentials(awsAccessKeyId, awsSecretKey, awsSessionKey)
     } else if (awsStsRoleArn.length > 0) {
       STSCredentials(awsStsRoleArn, awsStsSessionName)
     } else {

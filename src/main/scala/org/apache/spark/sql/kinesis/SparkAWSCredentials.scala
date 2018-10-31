@@ -56,10 +56,17 @@ private[kinesis] final case object InstanceProfileCredentials
  */
 private[kinesis] final case class BasicCredentials(
     awsAccessKeyId: String,
-    awsSecretKey: String) extends SparkAWSCredentials with Logging {
+    awsSecretKey: String,
+    sessionToken: Option[String] = None) extends SparkAWSCredentials with Logging {
 
   def provider: AWSCredentialsProvider = try {
-    new AWSStaticCredentialsProvider(new BasicAWSCredentials(awsAccessKeyId, awsSecretKey))
+    if (sessionToken.isEmpty) {
+      new AWSStaticCredentialsProvider(new BasicAWSCredentials(awsAccessKeyId, awsSecretKey))
+    } else {
+      new AWSStaticCredentialsProvider(
+        new BasicSessionCredentials(awsAccessKeyId, awsSecretKey, sessionToken.get))
+    }
+
   } catch {
     case e: IllegalArgumentException =>
       logWarning("Unable to construct AWSStaticCredentialsProvider with provided keypair; " +
