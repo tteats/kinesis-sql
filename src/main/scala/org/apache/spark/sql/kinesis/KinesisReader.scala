@@ -81,7 +81,7 @@ private[kinesis] case class KinesisReader(
 
   def getShards(): Seq[Shard] = {
     val shards = describeKinesisStream
-    logInfo(s"Describe Kinesis Stream:  ${shards}")
+    logWarning(s"Describe Kinesis Stream:  ${shards}")
     shards
   }
 

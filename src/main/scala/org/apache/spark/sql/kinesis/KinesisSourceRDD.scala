@@ -37,6 +37,9 @@ private[kinesis] case class ShardInfo(
   def this(shardId: String, kinesisPosition: KinesisPosition) {
     this(shardId, kinesisPosition.iteratorType, kinesisPosition.iteratorPosition)
   }
+
+  override def toString: String = s"ShardInfo(shardId='$shardId', iteratorType='$iteratorType, " +
+    s"iteratorPosition=$iteratorPosition)"
 }
 
 private[kinesis] case class ShardOffsets(
@@ -52,6 +55,9 @@ private[kinesis] case class ShardOffsets(
   def this(shardInfo: Array[ShardInfo]) {
     this(-1, "", shardInfo)
   }
+
+  override def toString: String = s"ShardOffsets(batchId=$batchId, streamName=$streamName, " +
+    s"shardInfo=${shardInfo.mkString(", ")}"
 }
 
 

@@ -100,91 +100,115 @@ private[kinesis] class KinesisSource(
 
   /** Returns the shards position to start reading data from */
   override def getOffset: Option[Offset] = synchronized {
-    val defaultOffset = new ShardOffsets(-1L, streamName)
-    val prevBatchId = currentShardOffsets.getOrElse(defaultOffset).batchId
-    val prevShardsInfo = prevBatchShardInfo(prevBatchId)
+    if (currentShardOffsets.isDefined) {
+      Some(KinesisSourceOffset(currentShardOffsets.get))
+    } else {
+      val defaultOffset = new ShardOffsets(-1L, streamName)
+      val prevBatchId = currentShardOffsets.getOrElse(defaultOffset).batchId
+      val prevShardsInfo = prevBatchShardInfo(prevBatchId)
+      logWarning(s"### getOffset.latestDescribeShardTimestamp:$latestDescribeShardTimestamp " +
+        s"describeInterval=$describeShardInterval, t=${System.currentTimeMillis()}")
 
-    val latestShardInfo: Array[ShardInfo] = {
-      if (latestDescribeShardTimestamp == -1 ||
-        ((latestDescribeShardTimestamp + describeShardInterval) < System.currentTimeMillis())) {
-        val latestShards = kinesisReader.getShards()
-        if (latestShards.nonEmpty) {
-          latestDescribeShardTimestamp = System.currentTimeMillis()
-          ShardSyncer.getLatestShardInfo(latestShards, prevShardsInfo, initialPosition)
-        } else {
-          Seq.empty[ShardInfo]
+      val latestShardInfo: Array[ShardInfo] = {
+        if (latestDescribeShardTimestamp == -1 ||
+          ((latestDescribeShardTimestamp + describeShardInterval) < System.currentTimeMillis())) {
+          val latestShards = kinesisReader.getShards()
+          logWarning("### getOffset(true getShards)")
+          if (latestShards.nonEmpty) {
+            logWarning("### getOffset(latestShards not empty")
+            latestDescribeShardTimestamp = System.currentTimeMillis()
+            ShardSyncer.getLatestShardInfo(latestShards, prevShardsInfo, initialPosition)
+          } else {
+            logWarning("### getOffset(latestShards empty")
+            Seq.empty[ShardInfo]
+          }
         }
-      }
-      else {
-        prevShardsInfo
-      }
-    }.toArray
+        else {
+          logWarning(s"### getOffset use original prevShardsInfo=${prevShardsInfo}")
+          prevShardsInfo
+        }
+      }.toArray
 
-    // update currentShardOffsets only when latestShardInfo is not empty
-    // else use last batch's ShardOffsets.
-    // Since there wont be any change in offset, no new batch will be triggered
-    if (latestShardInfo.nonEmpty) {
-      currentShardOffsets = Some(new ShardOffsets(prevBatchId + 1, streamName, latestShardInfo))
-    }
+      // update currentShardOffsets only when latestShardInfo is not empty
+      // else use last batch's ShardOffsets.
+      // Since there wont be any change in offset, no new batch will be triggered
+      if (latestShardInfo.nonEmpty) {
+        logWarning(s"### getOffset(latestShardInfo.notEmpty). currentShardOffsets " +
+          s"prev=$currentShardOffsets")
+        currentShardOffsets = Some(new ShardOffsets(prevBatchId + 1, streamName, latestShardInfo))
+        logWarning(s"### getOffset new currentShardOffsets=${currentShardOffsets}")
+      }
 
-    currentShardOffsets match {
-      case None => None
-      case Some(cso) => Some(KinesisSourceOffset(cso))
+      currentShardOffsets match {
+        case None => None
+        case Some(cso) => Some(KinesisSourceOffset(cso))
+      }
     }
   }
 
+  var runOnce: Boolean = false
+
   override def getBatch(start: Option[Offset], end: Offset): DataFrame = {
-    logInfo(s"End Offset is ${end.toString}")
-    val currBatchShardOffset = KinesisSourceOffset.getShardOffsets(end)
-    val currBatchId = currBatchShardOffset.batchId
-    var prevBatchId: Long = start match {
-      case Some(prevBatchStartOffset) =>
-        KinesisSourceOffset.getShardOffsets(prevBatchStartOffset).batchId
-      case None => -1.toLong
+    if (runOnce) {
+      sqlContext.internalCreateDataFrame(
+        sqlContext.sparkContext.emptyRDD[InternalRow], schema, isStreaming = true)
+    } else {
+      runOnce = true
+
+      logInfo(s"End Offset is ${end.toString}")
+      logWarning(s"### getBatch(start=[$start], end=[$end])")
+      val currBatchShardOffset = KinesisSourceOffset.getShardOffsets(end)
+      val currBatchId = currBatchShardOffset.batchId
+      var prevBatchId: Long = start match {
+        case Some(prevBatchStartOffset) =>
+          KinesisSourceOffset.getShardOffsets(prevBatchStartOffset).batchId
+        case None => -1.toLong
+      }
+      assert(prevBatchId <= currBatchId)
+      logWarning(s"### prevBatchId=$prevBatchId; currBatchId=$currBatchId")
+      logWarning(s"### currBatchShardOffset=$currentShardOffsets")
+
+      val shardInfos = {
+        // filter out those shardInfos for which ShardIterator is shard_end
+        currBatchShardOffset.shardInfo.filter {
+          s: (ShardInfo) => !(s.iteratorType.contains(new ShardEnd().iteratorType))
+        }.sortBy(_.shardId.toString)
+      }
+      logWarning(s"### Processing ${shardInfos.length} shards from [${shardInfos.mkString(",")}]")
+
+      // Create an RDD that reads from Kinesis
+      val kinesisSourceRDD = new KinesisSourceRDD(
+        sc,
+        sourceOptions,
+        streamName,
+        currBatchId,
+        shardInfos,
+        kinesisCredsProvider,
+        endPointURL,
+        hadoopConf(sqlContext),
+        metadataPath)
+
+      val rdd = kinesisSourceRDD.map { r: Record =>
+        InternalRow(
+          r.getData.array(),
+          UTF8String.fromString(streamName),
+          UTF8String.fromString(r.getPartitionKey),
+          UTF8String.fromString(r.getSequenceNumber),
+          DateTimeUtils.fromJavaTimestamp(
+            new java.sql.Timestamp(r.getApproximateArrivalTimestamp.getTime))
+        )
+      }
+
+      // On recovery, getBatch will get called before getOffset
+      if (currentShardOffsets.isEmpty) {
+        currentShardOffsets = Some(currBatchShardOffset)
+      }
+
+      logInfo("GetBatch generating RDD of offset range: " +
+        shardInfos.mkString(", "))
+
+      sqlContext.internalCreateDataFrame(rdd, schema, isStreaming = true)
     }
-    assert(prevBatchId <= currBatchId)
-
-    val shardInfos = {
-      // filter out those shardInfos for which ShardIterator is shard_end
-      currBatchShardOffset.shardInfo.filter {
-        s: (ShardInfo) => !(s.iteratorType.contains(new ShardEnd().iteratorType))
-      }.sortBy(_.shardId.toString)
-    }
-    logInfo(s"Processing ${shardInfos.length} shards from ${shardInfos}")
-
-    // Create an RDD that reads from Kinesis
-    val kinesisSourceRDD = new KinesisSourceRDD(
-      sc,
-      sourceOptions,
-      streamName,
-      currBatchId,
-      shardInfos,
-      kinesisCredsProvider,
-      endPointURL,
-      hadoopConf(sqlContext),
-      metadataPath)
-
-    val rdd = kinesisSourceRDD.map { r: Record =>
-      InternalRow(
-        r.getData.array(),
-        UTF8String.fromString(streamName),
-        UTF8String.fromString(r.getPartitionKey),
-        UTF8String.fromString(r.getSequenceNumber),
-        DateTimeUtils.fromJavaTimestamp(
-          new java.sql.Timestamp(r.getApproximateArrivalTimestamp.getTime))
-      )
-    }
-
-    // On recovery, getBatch will get called before getOffset
-    if (currentShardOffsets.isEmpty) {
-      currentShardOffsets = Some(currBatchShardOffset)
-    }
-
-    logInfo("GetBatch generating RDD of offset range: " +
-      shardInfos.mkString(", "))
-
-    sqlContext.internalCreateDataFrame(rdd, schema, isStreaming = true)
-
   }
 
   override def schema: StructType = KinesisReader.kinesisSchema
@@ -208,10 +232,10 @@ private[kinesis] class KinesisSource(
 
   private def prevBatchShardInfo(batchId: Long): Seq[ShardInfo] = {
     val shardInfo = if (batchId < 0) {
-      logInfo(s"This is the first batch. Returning Empty sequence")
+      logWarning(s"This is the first batch. Returning Empty sequence")
       Seq.empty[ShardInfo]
     } else {
-      logDebug(s"BatchId of previously executed batch is $batchId")
+      logWarning(s"BatchId of previously executed batch is $batchId")
       val prevShardinfo = metadataCommitter.get(batchId)
       if (prevShardinfo.isEmpty) {
         throw new IllegalStateException(s"Unable to fetch " +
@@ -219,7 +243,7 @@ private[kinesis] class KinesisSource(
       }
       prevShardinfo
     }
-    logDebug(s"Shard Info is ${shardInfo.mkString(", ")}")
+    logWarning(s"Shard Info is ${shardInfo.mkString(", ")}")
     shardInfo
   }
 

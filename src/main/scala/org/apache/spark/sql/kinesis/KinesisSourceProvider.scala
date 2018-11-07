@@ -67,6 +67,7 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
       schema: Option[StructType],
       providerName: String,
       parameters: Map[String, String]): Source = {
+    logWarning("### KinesisSourceProvider.createSource")
 
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
 
@@ -140,6 +141,7 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
                            parameters: Map[String, String],
                            partitionColumns: Seq[String],
                            outputMode: OutputMode): Sink = {
+    logWarning("## KinesisSourceProvider.createSink()")
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
     validateSinkOptions(caseInsensitiveParams)
     new KinesisSink(sqlContext, caseInsensitiveParams, outputMode)
@@ -149,6 +151,7 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
                                        schema: Optional[ StructType ],
                                        checkpointLocation: String,
                                        options: DataSourceOptions): KinesisContinuousReader = {
+    logWarning("## KinesisSourceProvider.createContinuousReader()")
     val parameters = options.asMap().asScala.toMap
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
     validateStreamOptions(parameters)
