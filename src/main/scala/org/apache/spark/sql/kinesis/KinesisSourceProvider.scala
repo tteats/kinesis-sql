@@ -67,7 +67,6 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
       schema: Option[StructType],
       providerName: String,
       parameters: Map[String, String]): Source = {
-    logWarning("### KinesisSourceProvider.createSource")
 
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
 
@@ -141,7 +140,6 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
                            parameters: Map[String, String],
                            partitionColumns: Seq[String],
                            outputMode: OutputMode): Sink = {
-    logWarning("## KinesisSourceProvider.createSink()")
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
     validateSinkOptions(caseInsensitiveParams)
     new KinesisSink(sqlContext, caseInsensitiveParams, outputMode)
@@ -151,7 +149,6 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
                                        schema: Optional[ StructType ],
                                        checkpointLocation: String,
                                        options: DataSourceOptions): KinesisContinuousReader = {
-    logWarning("## KinesisSourceProvider.createContinuousReader()")
     val parameters = options.asMap().asScala.toMap
     val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
     validateStreamOptions(parameters)
@@ -219,7 +216,7 @@ private[kinesis] object KinesisSourceProvider extends Logging {
   private[kinesis] def getKinesisPosition(
       params: Map[String, String]): KinesisPosition = {
     // TODO Support custom shards positions
-    val CURRENT_TIMESTAMP = System.currentTimeMillis / 1000
+    val CURRENT_TIMESTAMP = System.currentTimeMillis / 1000 // kinesis likes the time in seconds.
     params.get(STARTING_POSITION_KEY).map(_.trim) match {
       case Some(position) if position.toLowerCase(Locale.ROOT) == "latest" =>
         new AtTimeStamp(CURRENT_TIMESTAMP)

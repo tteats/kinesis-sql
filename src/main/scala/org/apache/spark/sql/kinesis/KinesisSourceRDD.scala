@@ -220,37 +220,18 @@ private[kinesis] class KinesisSourceRDD(
 
       val shardInfo: ShardInfo =
         if (hasShardClosed) {
-          logWarning("### updateMetadata.shardEnd")
           ShardInfo.toShardInfo(sourcePartition.shardInfo.shardId,
             new ShardEnd())
         }
         else if (!lastReadSequenceNumber.isEmpty) {
-          logWarning("### updateMetadata.afterSequenceNumber")
           ShardInfo.toShardInfo(
             sourcePartition.shardInfo.shardId,
             new AfterSequenceNumber(lastReadSequenceNumber))
         }
         else {
-          /*
-          if (lastSeenTimeStamp > 0) {
-            logWarning("### updateMetadata.timestamp")
-            new ShardInfo(
-              sourcePartition.shardInfo.shardId,
-              new TrimHorizon())
-            // new AtTimeStamp(lastSeenTimeStamp))
-          } else {
-            logWarning("Neither LastSequenceNumber nor LastTimeStamp was recorded.")
-            sourcePartition.shardInfo
-          }
-          */
-          if (sourcePartition.shardInfo.iteratorPosition == "LATEST") {
-            logWarning("### updateMetadata.latest, changing to timestamp for this shard.")
-          }
-          logWarning("### updateMetadata.reuse")
           sourcePartition.shardInfo
         }
       logInfo(s"Batch $batchId : Committing End Shard position for $kinesisShardId")
-      logWarning(s"Committing shard info: $shardInfo")
       metadataCommitter.add(batchId, kinesisShardId, shardInfo)
     }
 

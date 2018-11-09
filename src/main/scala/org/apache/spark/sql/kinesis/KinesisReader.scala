@@ -81,7 +81,7 @@ private[kinesis] case class KinesisReader(
 
   def getShards(): Seq[Shard] = {
     val shards = describeKinesisStream
-    logWarning(s"Describe Kinesis Stream:  ${shards}")
+    logInfo(s"Describe Kinesis Stream:  ${shards}")
     shards
   }
 
@@ -104,7 +104,7 @@ private[kinesis] case class KinesisReader(
     getShardIteratorRequest.setStreamName(streamName)
     getShardIteratorRequest.setShardIteratorType(iteratorType)
 
-    logWarning(s"getShardIterator(shardId=$shardId, iteratorType=$iteratorType, " +
+    logDebug(s"getShardIterator(shardId=$shardId, iteratorType=$iteratorType, " +
       s"iteratorPosition=$iteratorPosition)")
 
     if (iteratorType == "AFTER_SEQUENCE_NUMBER" || iteratorType == "AT_SEQUENCE_NUMBER") {
@@ -123,7 +123,6 @@ private[kinesis] case class KinesisReader(
         getAmazonClient.getShardIterator(getShardIteratorRequest)
       }
     }
-    logWarning(s"### getShardIterator($shardId, $getShardIteratorResult.getShardIterator}")
     getShardIteratorResult.getShardIterator
   }
 
