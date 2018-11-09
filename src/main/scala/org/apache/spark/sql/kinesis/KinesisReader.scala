@@ -104,6 +104,9 @@ private[kinesis] case class KinesisReader(
     getShardIteratorRequest.setStreamName(streamName)
     getShardIteratorRequest.setShardIteratorType(iteratorType)
 
+    logWarning(s"getShardIterator(shardId=$shardId, iteratorType=$iteratorType, " +
+      s"iteratorPosition=$iteratorPosition)")
+
     if (iteratorType == "AFTER_SEQUENCE_NUMBER" || iteratorType == "AT_SEQUENCE_NUMBER") {
       getShardIteratorRequest.setStartingSequenceNumber(iteratorPosition)
     }
@@ -120,6 +123,7 @@ private[kinesis] case class KinesisReader(
         getAmazonClient.getShardIterator(getShardIteratorRequest)
       }
     }
+    logWarning(s"### getShardIterator($shardId, $getShardIteratorResult.getShardIterator}")
     getShardIteratorResult.getShardIterator
   }
 

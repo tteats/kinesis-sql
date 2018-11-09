@@ -42,6 +42,10 @@ case class KinesisSourceOffset(shardsToOffsets: ShardOffsets) extends OffsetV2 {
         val shardInfo = result.getOrElse(si.shardId, new HashMap[String, String])
         shardInfo += "iteratorType" -> si.iteratorType
         shardInfo += "iteratorPosition" -> si.iteratorPosition
+        if (si.iterator.isDefined) {
+          shardInfo += "iterator" -> (si.iterator.get._1 + "," + si.iterator.get._2.toString)
+        }
+
         result += si.shardId -> shardInfo
     }
     Serialization.write(result)(KinesisSourceOffset.format)
@@ -83,7 +87,11 @@ object KinesisSourceOffset {
       val shardInfo: Array[ ShardInfo ] = readObj.filter(_._1 != "metadata").map {
         case (shardId, value) => new ShardInfo(shardId.toString,
           value.get("iteratorType").get,
-          value.get("iteratorPosition").get)
+          value.get("iteratorPosition").get,
+          iterator = value.get("iterator").map { s =>
+            val split = s.split(",")
+            (split(0), split(1).toLong)
+          })
       }.toArray
       KinesisSourceOffset(new ShardOffsets(metadata.get("batchId").toLong,
         metadata.get("streamName"), shardInfo))
