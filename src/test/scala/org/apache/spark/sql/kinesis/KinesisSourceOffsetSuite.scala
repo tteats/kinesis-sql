@@ -36,10 +36,10 @@ class KinesisSourceOffsetSuite extends OffsetSuite with SharedSQLContext {
 
   compare(
     one = KinesisSourceOffset(new ShardOffsets(1L, "foo", Array(
-      new ShardInfo("shard-001", new TrimHorizon())))),
+      ShardInfo.toShardInfo("shard-001", new TrimHorizon())))),
     two = KinesisSourceOffset(new ShardOffsets(1L, "foo",
-      Array(new ShardInfo("shard-001", new TrimHorizon()),
-        new ShardInfo("shard-002", new TrimHorizon()) )))
+      Array(ShardInfo.toShardInfo("shard-001", new TrimHorizon()),
+        ShardInfo.toShardInfo("shard-002", new TrimHorizon()) )))
   )
   var shards = Array.empty[ShardInfo]
   shards = shards ++ Array(ShardInfo("shard-001", "TRIM_HORIZON", ""))

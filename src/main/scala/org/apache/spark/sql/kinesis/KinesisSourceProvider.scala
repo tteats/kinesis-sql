@@ -216,7 +216,7 @@ private[kinesis] object KinesisSourceProvider extends Logging {
   private[kinesis] def getKinesisPosition(
       params: Map[String, String]): KinesisPosition = {
     // TODO Support custom shards positions
-    val CURRENT_TIMESTAMP = System.currentTimeMillis
+    val CURRENT_TIMESTAMP = System.currentTimeMillis / 1000 // kinesis likes the time in seconds.
     params.get(STARTING_POSITION_KEY).map(_.trim) match {
       case Some(position) if position.toLowerCase(Locale.ROOT) == "latest" =>
         new AtTimeStamp(CURRENT_TIMESTAMP)

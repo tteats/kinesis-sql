@@ -360,7 +360,7 @@ class KinesisContinuousDataReader(
   override def getOffset(): KinesisSourcePartitionOffset = {
     val shardInfo: ShardInfo =
       if ( !lastReadSequenceNumber.isEmpty ) {
-        new ShardInfo(startOffset.shardId, new AfterSequenceNumber(lastReadSequenceNumber))
+        ShardInfo.toShardInfo(startOffset.shardId, new AfterSequenceNumber(lastReadSequenceNumber))
       } else {
         logDebug(s"No Record read so far. Returning last known offset")
         startOffset

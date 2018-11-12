@@ -32,11 +32,24 @@ import org.apache.spark.util.SerializableConfiguration
 private[kinesis] case class ShardInfo(
     shardId: String,
     iteratorType: String,
-    iteratorPosition: String) extends Serializable {
+    iteratorPosition: String,
+    iterator: Option[(String, Long)] = None,
+    hasData: Option[Boolean] = None) extends Serializable {
 
-  def this(shardId: String, kinesisPosition: KinesisPosition) {
-    this(shardId, kinesisPosition.iteratorType, kinesisPosition.iteratorPosition)
+  def getIteratorStr(kinesisReader: KinesisReader): String = {
+    iterator
+      .filter(_._2 > System.currentTimeMillis())
+      .map(_._1)
+      .getOrElse(kinesisReader.getShardIterator(shardId, iteratorType, iteratorPosition))
   }
+
+  override def toString: String = s"ShardInfo(shardId='$shardId', iteratorType='$iteratorType, " +
+    s"iteratorPosition=$iteratorPosition)"
+}
+
+private[kinesis] object ShardInfo {
+  def toShardInfo(shardId: String, kinesisPosition: KinesisPosition): ShardInfo =
+    ShardInfo(shardId, kinesisPosition.iteratorType, kinesisPosition.iteratorPosition)
 }
 
 private[kinesis] case class ShardOffsets(
@@ -52,6 +65,9 @@ private[kinesis] case class ShardOffsets(
   def this(shardInfo: Array[ShardInfo]) {
     this(-1, "", shardInfo)
   }
+
+  override def toString: String = s"ShardOffsets(batchId=$batchId, streamName=$streamName, " +
+    s"shardInfo=${shardInfo.mkString(", ")}"
 }
 
 
@@ -124,10 +140,7 @@ private[kinesis] class KinesisSourceRDD(
 
       def getShardIterator(): String = {
         if (_shardIterator == null) {
-          _shardIterator = kinesisReader.getShardIterator(
-            sourcePartition.shardInfo.shardId,
-            sourcePartition.shardInfo.iteratorType,
-            sourcePartition.shardInfo.iteratorPosition)
+          _shardIterator = sourcePartition.shardInfo.getIteratorStr(kinesisReader)
         }
         assert(_shardIterator!=null)
         _shardIterator
@@ -140,13 +153,12 @@ private[kinesis] class KinesisSourceRDD(
           while (fetchedRecords.length == 0 && fetchNext == true)  {
             val currentTimestamp: Long = System.currentTimeMillis
             if (currentTimestamp - startTimestamp < maxFetchTimeInMs) {
-              val shardInterator = getShardIterator()
               val records: GetRecordsResult = kinesisReader.getKinesisRecords(getShardIterator,
                 recordPerRequest)
               // de-aggregate records
-               val deaggregateRecords = kinesisReader.deaggregateRecords(records.getRecords, null)
-               fetchedRecords = deaggregateRecords.asScala.toArray
-               // fetchedRecords = records.getRecords.asScala.toArray
+              val deaggregateRecords = kinesisReader.deaggregateRecords(records.getRecords, null)
+              fetchedRecords = deaggregateRecords.asScala.toArray
+              // fetchedRecords = records.getRecords.asScala.toArray
               _shardIterator = records.getNextShardIterator
               logDebug(s"Milli secs behind is ${records.getMillisBehindLatest.longValue()}")
               lastSeenTimeStamp = currentTimestamp - records.getMillisBehindLatest.longValue()
@@ -208,23 +220,16 @@ private[kinesis] class KinesisSourceRDD(
 
       val shardInfo: ShardInfo =
         if (hasShardClosed) {
-          new ShardInfo(sourcePartition.shardInfo.shardId,
+          ShardInfo.toShardInfo(sourcePartition.shardInfo.shardId,
             new ShardEnd())
         }
         else if (!lastReadSequenceNumber.isEmpty) {
-          new ShardInfo(
+          ShardInfo.toShardInfo(
             sourcePartition.shardInfo.shardId,
             new AfterSequenceNumber(lastReadSequenceNumber))
         }
         else {
-          if (lastSeenTimeStamp > 0) {
-            new ShardInfo(
-              sourcePartition.shardInfo.shardId,
-              new AtTimeStamp(lastSeenTimeStamp))
-          } else {
-            logWarning("Neither LastSequenceNumber nor LastTimeStamp was recorded.")
-            sourcePartition.shardInfo
-          }
+          sourcePartition.shardInfo
         }
       logInfo(s"Batch $batchId : Committing End Shard position for $kinesisShardId")
       metadataCommitter.add(batchId, kinesisShardId, shardInfo)

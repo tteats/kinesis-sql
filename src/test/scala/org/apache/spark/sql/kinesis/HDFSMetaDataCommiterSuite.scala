@@ -41,13 +41,13 @@ class HDFSMetaDataCommiterSuite extends SparkFunSuite with SharedSQLContext {
 
       assert(metadataCommitter.add(1, "Shard-000001", "one"))
       assert(metadataCommitter.add(1, "Shard-000002", "two"))
-      assert(metadataCommitter.get(1) === Seq("one", "two"))
+      assert(metadataCommitter.get(1).sorted === Seq("one", "two").sorted)
 
       // Adding the same batch over-writes the previous entry
       // This is required since re-attempt of a failed task will
       // update in same location
       assert(metadataCommitter.add(1, "Shard-000001", "updated-one"))
-      assert(metadataCommitter.get(1) === Seq("updated-one", "two"))
+      assert(metadataCommitter.get(1).sorted === Seq("updated-one", "two").sorted)
     }
   }
 

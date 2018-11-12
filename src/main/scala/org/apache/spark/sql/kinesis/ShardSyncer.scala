@@ -110,7 +110,7 @@ private[kinesis] object ShardSyncer extends Logging {
           logDebug("Need to create a shardInfo for shardId " + parentShardId)
           if (newShardsInfoMap.get(parentShardId).isEmpty) {
               newShardsInfoMap.put(parentShardId,
-                new ShardInfo(parentShardId, initialPosition))
+                ShardInfo.toShardInfo(parentShardId, initialPosition))
             }
           }
       }
@@ -184,7 +184,7 @@ private[kinesis] object ShardSyncer extends Logging {
           AddShardInfoForAncestors(shardId,
             latestShards, initialPosition, prevShardsList, newShardsInfoMap, memoizationContext)
           newShardsInfoMap.put(shardId,
-            new ShardInfo(shardId, initialPosition))
+            ShardInfo.toShardInfo(shardId, initialPosition))
         }
     }
     prevShardsInfo ++ newShardsInfoMap.values.toSeq
