@@ -38,7 +38,6 @@ import org.apache.spark.sql.types.StructType
 private[kinesis] class KinesisSourceProvider extends DataSourceRegister
   with StreamSourceProvider
   with StreamSinkProvider
-  with ContinuousReadSupport
   with Logging {
 
   import KinesisSourceProvider._
@@ -145,51 +144,6 @@ private[kinesis] class KinesisSourceProvider extends DataSourceRegister
     new KinesisSink(sqlContext, caseInsensitiveParams, outputMode)
   }
 
-  override def createContinuousReader(
-                                       schema: Optional[ StructType ],
-                                       checkpointLocation: String,
-                                       options: DataSourceOptions): KinesisContinuousReader = {
-    val parameters = options.asMap().asScala.toMap
-    val caseInsensitiveParams = parameters.map { case (k, v) => (k.toLowerCase(Locale.ROOT), v) }
-    validateStreamOptions(parameters)
-    val specifiedKinesisParams =
-      parameters
-        .keySet
-        .filter(_.toLowerCase(Locale.ROOT).startsWith("kinesis."))
-        .map { k => k.drop(8).toString -> parameters(k) }
-        .toMap
-
-    val streamName = caseInsensitiveParams.get(STREAM_NAME_KEY).get
-
-    val awsAccessKeyId = caseInsensitiveParams.get(AWS_ACCESS_KEY_ID).getOrElse("")
-    val awsSecretKey = caseInsensitiveParams.get(AWS_SECRET_KEY).getOrElse("")
-    val awsStsRoleArn = caseInsensitiveParams.get(AWS_STS_ROLE_ARN).getOrElse("")
-    val awsStsSessionName = caseInsensitiveParams.get(AWS_STS_SESSION_NAME).getOrElse("")
-    val awsSesionToken = caseInsensitiveParams.get(AWS_SESSION_TOKEN)
-
-    val regionName = caseInsensitiveParams.get(REGION_NAME_KEY)
-      .getOrElse(DEFAULT_KINESIS_REGION_NAME)
-    val endPointURL = caseInsensitiveParams.get(END_POINT_URL)
-      .getOrElse(DEFAULT_KINESIS_ENDPOINT_URL)
-
-    val initialPosition: KinesisPosition = getKinesisPosition(caseInsensitiveParams)
-
-    val kinesisCredsProvider = if (awsAccessKeyId.length > 0) {
-      BasicCredentials(awsAccessKeyId, awsSecretKey, awsSesionToken)
-    } else if (awsStsRoleArn.length > 0) {
-      STSCredentials(awsStsRoleArn, awsStsSessionName)
-    } else {
-      InstanceProfileCredentials
-    }
-
-    new KinesisContinuousReader(
-      specifiedKinesisParams,
-      streamName,
-      initialPosition,
-      endPointURL,
-      kinesisCredsProvider)
-
-  }
 
 }
 
